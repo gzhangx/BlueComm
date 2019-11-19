@@ -12,10 +12,6 @@ import CoreBluetooth
 struct DeviceListView: View {
     @ObservedObject var blueMngr: BlueToothMgr = BlueToothMgr()
     @State var devSel = 0
-    fileprivate func extractedFunc(_ curId: String,_ devId: String) -> Text {
-        return Text(curId == devId ? "Disconnect": "Connect")
-    }
-    
     
     var body: some View {
         NavigationView {
@@ -29,18 +25,17 @@ struct DeviceListView: View {
                             withAnimation {
                             self.selectDevice(dev)
                             }
-                        },
-                               label:{Text(self.blueMngr.curDeviceId == dev.id ? "Disconnect":"Connect")})
+                        }){Text(self.blueMngr.curDeviceId == dev.id ? "Disconnect":"Connect").border(Color.black, width: 1).cornerRadius(2)}
                     }
                 }
                 Text(blueMngr.receivedText)
-                Text("Hello, World!2")
+                DirPanView(blueMngr: blueMngr, curDeviceId: $blueMngr.curDeviceId)
             }
         .navigationBarTitle(Text("Devices"))
             .navigationBarItems(trailing:
                 HStack{
                     Button(action: scan, label:{Text("Scan")})
-                    Button(action: writeRand, label:{Text("Write")})
+                    Button(action: writeRand, label:{Text("gzhang ACCCN Test")})
                 }
             )
         }.onAppear(perform: blueInit)
@@ -59,6 +54,35 @@ struct DeviceListView: View {
     
     func writeRand() {
         blueMngr.writeData("test")
+    }
+}
+
+struct DirPanView : View {
+    var blueMngr: BlueToothMgr
+    @Binding var curDeviceId: String
+    var body: some View {
+        VStack {
+            if curDeviceId != ""
+            {
+                VStack {
+                    Button(action: {
+                        self.blueMngr.writeData("W")
+                    }) {Text("W").frame(width: 50, height: 50, alignment: Alignment.center).border(Color.black, width: 2).cornerRadius(10)}
+                    HStack {
+                        Button(action: {
+                            self.blueMngr.writeData("A")
+                        }) {Text("A").frame(width: 50, height: 50, alignment: Alignment.center).border(Color.black, width: 2).cornerRadius(4)}
+                        Spacer()
+                        Button(action: {
+                            self.blueMngr.writeData("D")
+                        }) {Text("D").frame(width: 50, height: 50, alignment: Alignment.center).border(Color.black, width: 2).cornerRadius(4)}
+                    }.frame(width: 250, height: 55, alignment: Alignment.center)
+                    Button(action: {
+                        self.blueMngr.writeData("S")
+                    }) {Text("S").frame(width: 50, height: 50, alignment: Alignment.center).border(Color.black, width: 2).cornerRadius(4)}
+                }.frame(width: 300, height: 200, alignment: Alignment.center).background(Color.yellow)
+            }
+        }
     }
 }
 
