@@ -10,22 +10,26 @@ import SwiftUI
 import CoreBluetooth
 
 struct ContentView: View {
-    var blueMngr: BlueToothMgr = BlueToothMgr()
+    @ObservedObject var blueMngr: BlueToothMgr = BlueToothMgr()
+    @State var devSel = 0
     var body: some View {
         NavigationView {
             VStack {
-                List {
-                    Text("Hello, World!1111")
-                    Text("Hello, World!")
+                List(blueMngr.devices) {
+                    dev in
+                    HStack{
+                        Text(dev.name)
+                        Text(dev.id)
+                        Button(action: {self.selectDevice(dev)}, label:{Text("Connect")})
+                    }
                 }
-                Text("Hello, World!1")
+                Text(blueMngr.receivedText)
                 Text("Hello, World!2")
             }
         .navigationBarTitle(Text("Devices"))
             .navigationBarItems(trailing:
                 HStack{
                     Button(action: scan, label:{Text("Scan")})
-                    Button(action: selectDevice, label:{Text("Select")})
                 }
             )
         }.onAppear(perform: blueInit)
@@ -33,18 +37,25 @@ struct ContentView: View {
     }
     
     func blueInit(){
-        blueMngr.createme()
+        blueMngr.createme(self)
     }
     func scan() {
         
     }
-    func selectDevice(){
-        
+    func selectDevice(_ dev: DeviceInfo){
+        blueMngr.doConnect(dev)
     }
 }
 
+struct DeviceInfo : Identifiable{
+    var id: String
+    var name: String
+    var peripheral: CBPeripheral
+}
 
-class BlueToothMgr: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    @Published var receivedText: String = "N/A"
+    @Published var devices: [DeviceInfo] = []
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         switch peripheral.state
         {
@@ -68,7 +79,9 @@ class BlueToothMgr: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     var centralManager: CBCentralManager!
     var arduino: CBPeripheral!
-    func createme() {
+    var view: ContentView!
+    func createme(_ mview: ContentView ) {
+        view = mview
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -95,12 +108,22 @@ class BlueToothMgr: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         print(peripheral.name ?? "")
-        if (peripheral.name == "=VEDA01") {
-            print(peripheral)
-            arduino = peripheral
-            arduino.delegate = (self as CBPeripheralDelegate)
-            centralManager.connect(peripheral)
+        if devices.firstIndex(where: {$0.id == peripheral.identifier.description}) ?? -1 < 0 {
+            devices.append(DeviceInfo(id: peripheral.identifier.description, name: peripheral.name ?? "", peripheral: peripheral))
         }
+        if (peripheral.name == "=VEDA01xxxxxxxx") {
+            print(peripheral)
+            //arduino = peripheral
+            peripheral.delegate = (self as CBPeripheralDelegate)
+            //centralManager.connect(peripheral)
+        }
+    }
+    
+    func doConnect(_ device: DeviceInfo) {
+        let peripheral = device.peripheral
+        print(peripheral)
+        peripheral.delegate = (self as CBPeripheralDelegate)
+        centralManager.connect(peripheral)
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -145,7 +168,10 @@ class BlueToothMgr: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         print(characteristic)
         switch characteristic.uuid {
         default:
-            print("Unhandled Characteristic UUID: \(characteristic.uuid) \(characteristic.value)")
+            print("Unhandled Characteristic UUID: \(characteristic.uuid) \(String(describing: characteristic.value))")
+            
+            receivedText = String(decoding: characteristic.value!, as: UTF8.self)
+            print("Unhandled Characteristic UUID: \(characteristic.uuid) \(receivedText)")
         }
     }
 }
