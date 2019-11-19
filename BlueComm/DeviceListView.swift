@@ -9,9 +9,14 @@
 import SwiftUI
 import CoreBluetooth
 
-struct ContentView: View {
+struct DeviceListView: View {
     @ObservedObject var blueMngr: BlueToothMgr = BlueToothMgr()
     @State var devSel = 0
+    fileprivate func extractedFunc(_ curId: String,_ devId: String) -> Text {
+        return Text(curId == devId ? "Disconnect": "Connect")
+    }
+    
+    
     var body: some View {
         NavigationView {
             VStack {
@@ -20,7 +25,12 @@ struct ContentView: View {
                     HStack{
                         Text(dev.name)
                         Text(dev.id)
-                        Button(action: {self.selectDevice(dev)}, label:{Text("Connect")})
+                        Button(action: {
+                            withAnimation {
+                            self.selectDevice(dev)
+                            }
+                        },
+                               label:{Text(self.blueMngr.curDeviceId == dev.id ? "Disconnect":"Connect")})
                     }
                 }
                 Text(blueMngr.receivedText)
@@ -41,7 +51,7 @@ struct ContentView: View {
         blueMngr.createme(self)
     }
     func scan() {
-        
+        blueMngr.doScan()
     }
     func selectDevice(_ dev: DeviceInfo){
         blueMngr.doConnect(dev)
@@ -62,7 +72,7 @@ struct DeviceInfo : Identifiable{
 class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @Published var receivedText: String = "N/A"
     @Published var devices: [DeviceInfo] = []
-    var connected: Bool = false
+    @Published var curDeviceId = ""
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         switch peripheral.state
         {
@@ -83,13 +93,19 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
             print("peripheral def")
         }
     }
+
     
     var centralManager: CBCentralManager!
-    var activeDev: DeviceInfo!
-    var view: ContentView!
-    func createme(_ mview: ContentView ) {
+    var activeDev: DeviceInfo?
+    var view: DeviceListView!
+    func createme(_ mview: DeviceListView ) {
         view = mview
         centralManager = CBCentralManager(delegate: self, queue: nil)
+    }
+    
+    func doScan() {
+        devices.removeAll()
+        centralManager.scanForPeripherals(withServices: nil)
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state
@@ -107,7 +123,7 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
             print("central poweredOff")
         case .poweredOn:
             print("central poweredOn")
-            centralManager.scanForPeripherals(withServices: nil)
+            doScan()
         @unknown default:
             print("central unknown!!!!")
         }
@@ -120,20 +136,23 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
                                       writeChar: nil
             ))
         }
-        if (peripheral.name == "=VEDA01xxxxxxxx") {
-            print(peripheral)
-            //arduino = peripheral
-            peripheral.delegate = (self as CBPeripheralDelegate)
-            //centralManager.connect(peripheral)
-        }
     }
     
     func doConnect(_ device: DeviceInfo) {
         let peripheral = device.peripheral
         print(peripheral)
         peripheral.delegate = (self as CBPeripheralDelegate)
+        if (activeDev?.id == device.id) {
+            //centralManager.(peripheral)
+            centralManager.cancelPeripheralConnection(peripheral)
+            activeDev = nil
+            curDeviceId = ""
+            return
+        }
+        centralManager.stopScan()
         centralManager.connect(peripheral)
         activeDev = device
+        curDeviceId = device.id
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -170,6 +189,7 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
                 print("\(characteristic.uuid): properties contains .notify")
                 var found = devices.first(where: {$0.peripheral.identifier == peripheral.identifier})
                 found?.writeChar = characteristic
+                activeDev = found
                 peripheral.setNotifyValue(true, for: characteristic)
             }
         }
@@ -188,16 +208,16 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
     }
     
     func writeData(_ str: String) {
-        if !connected {
-            return
+        if activeDev != nil {
+            print("write data \(str)")
+            print(activeDev!)
+            activeDev?.peripheral.writeValue(str.data(using: .utf8)!, for: (activeDev?.writeChar)!, type: CBCharacteristicWriteType.withoutResponse)
         }
-        print("write data \(str)")
-        activeDev.peripheral.writeValue(str.data(using: .utf8)!, for: activeDev.writeChar!, type: CBCharacteristicWriteType.withoutResponse)
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
+struct DeviceListView_Previews: PreviewProvider {
     static var previews: some View {
-        ContentView()
+        DeviceListView()
     }
 }
