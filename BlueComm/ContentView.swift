@@ -30,6 +30,7 @@ struct ContentView: View {
             .navigationBarItems(trailing:
                 HStack{
                     Button(action: scan, label:{Text("Scan")})
+                    Button(action: writeRand, label:{Text("Write")})
                 }
             )
         }.onAppear(perform: blueInit)
@@ -45,17 +46,23 @@ struct ContentView: View {
     func selectDevice(_ dev: DeviceInfo){
         blueMngr.doConnect(dev)
     }
+    
+    func writeRand() {
+        blueMngr.writeData("test")
+    }
 }
 
 struct DeviceInfo : Identifiable{
     var id: String
     var name: String
     var peripheral: CBPeripheral
+    var writeChar: CBCharacteristic?
 }
 
 class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @Published var receivedText: String = "N/A"
     @Published var devices: [DeviceInfo] = []
+    var connected: Bool = false
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         switch peripheral.state
         {
@@ -78,7 +85,7 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
     }
     
     var centralManager: CBCentralManager!
-    var arduino: CBPeripheral!
+    var activeDev: DeviceInfo!
     var view: ContentView!
     func createme(_ mview: ContentView ) {
         view = mview
@@ -109,7 +116,9 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         print(peripheral.name ?? "")
         if devices.firstIndex(where: {$0.id == peripheral.identifier.description}) ?? -1 < 0 {
-            devices.append(DeviceInfo(id: peripheral.identifier.description, name: peripheral.name ?? "", peripheral: peripheral))
+            devices.append(DeviceInfo(id: peripheral.identifier.description, name: peripheral.name ?? "", peripheral: peripheral,
+                                      writeChar: nil
+            ))
         }
         if (peripheral.name == "=VEDA01xxxxxxxx") {
             print(peripheral)
@@ -124,6 +133,7 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
         print(peripheral)
         peripheral.delegate = (self as CBPeripheralDelegate)
         centralManager.connect(peripheral)
+        activeDev = device
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -158,6 +168,8 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
           
             if characteristic.properties.contains(.notify) {
                 print("\(characteristic.uuid): properties contains .notify")
+                var found = devices.first(where: {$0.peripheral.identifier == peripheral.identifier})
+                found?.writeChar = characteristic
                 peripheral.setNotifyValue(true, for: characteristic)
             }
         }
@@ -173,6 +185,14 @@ class BlueToothMgr: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeri
             receivedText = String(decoding: characteristic.value!, as: UTF8.self)
             print("Unhandled Characteristic UUID: \(characteristic.uuid) \(receivedText)")
         }
+    }
+    
+    func writeData(_ str: String) {
+        if !connected {
+            return
+        }
+        print("write data \(str)")
+        activeDev.peripheral.writeValue(str.data(using: .utf8)!, for: activeDev.writeChar!, type: CBCharacteristicWriteType.withoutResponse)
     }
 }
 
